@@ -4,8 +4,7 @@ import numpy as np
 
 import torch
 from torch.nn import functional as F
-
-from constants import *
+import constants
 
 ### DESCRIPTION ###
 # power sampling to sample from p^{alpha}, where p is the base model
@@ -47,27 +46,25 @@ def dist_temp_scale(logit_p, temp):
     return logit_p * torch.tensor(1 / temp, dtype=logit_p.dtype, device=logit_p.device)
 
 # low-temperature sampling proposal distribution
-def naive_temp(p : AutoregressiveSampler, input_ids, temp, seq_len):
-    c = len(input_ids)
-    tokenizer = p.tokenizer
+def naive_temp(p : AutoregressiveSampler, gen, temp, seq_len):
+    input_ids = torch.tensor([gen], device=p.device, dtype=torch.long)
     output = p.model.generate(
         input_ids=input_ids,
-        max_new_tokens=seq_len - c,
+        max_new_tokens=seq_len - input_ids.size(-1),
         do_sample=True,
         temperature=temp,
-        eos_token_id=tokenizer.eos_token_id,
-        pad_token_id=tokenizer.eos_token_id,
+        eos_token_id=p.tokenizer.eos_token_id,
+        pad_token_id=p.tokenizer.eos_token_id,
         return_dict_in_generate=True,
         output_scores=True,
         output_logits=True,
     )
     unscaled_logits = torch.stack(output.logits, dim=0)
     scaled_logits = torch.stack(output.scores, dim=0)
-    tokens = output.sequences[0][c:]
+    tokens = output.sequences[0][input_ids.size(-1):]
     prop = output.sequences[0].tolist()
 
     assert len(tokens) == unscaled_logits.shape[0] == scaled_logits.shape[0]
-
 
     idx = tokens.view(unscaled_logits.shape[0], 1, 1)
 
@@ -81,19 +78,17 @@ def naive_temp(p : AutoregressiveSampler, input_ids, temp, seq_len):
 
 # alpha = infty power sampling; temp is for proposal distribution
 def max_swap(p : AutoregressiveSampler, context, temp, mcmc_steps, max_new_tokens, block_num=16):
-    c = len(context)
     print(f'Temp: {temp}')
-    gen = []
-    if context is not None:
-        gen = context.copy()
     log_probs_norm = []
     log_probs_unnorm = []
+    c = 0
+    gen = []
+    if context is not None:
+        c = len(context)
+        gen = context.copy()
 
-
-    print(max_new_tokens)
     assert max_new_tokens % block_num == 0
     jump_size = int(max_new_tokens // block_num)
-    print(jump_size)
     attempts = 0
     acceptances = 0
 
@@ -144,10 +139,9 @@ def mcmc_power_samp(p : AutoregressiveSampler, context, temp, mcmc_steps, max_ne
     log_probs_unnorm = []
     c = 0
     gen = []
-    if isinstance(context, torch.Tensor):
-        assert context.ndim == 1
-        c = context.numel()
-        gen = context.clone()
+    if context is not None:
+        c = len(context)
+        gen = context.copy()
 
     assert max_new_tokens % block_num == 0
     jump_size = int(max_new_tokens // block_num)
@@ -192,59 +186,60 @@ def mcmc_power_samp(p : AutoregressiveSampler, context, temp, mcmc_steps, max_ne
             return gen, log_probs_norm, log_probs_unnorm, acceptance_ratio
 
     acceptance_ratio = acceptances/attempts
-    gen = torch.tensor(gen, dtype=torch.long, device=p.device)
-    return gen, log_probs_norm, log_probs_unnorm, acceptance_ratio
+    gen_t = torch.tensor(gen, dtype=torch.long, device=p.device)
+    print("Generation: ", gen_t)
+    return gen_t, log_probs_norm, log_probs_unnorm, acceptance_ratio
 
 
 def format_prompt(question, model, tokenizer, cot=True):
     format_str = ""
     if model == "qwen":
-        format_str = PROMPT + question
+        format_str = constants.PROMPT + question
         if cot:
-            format_str+=COT
+            format_str += constants.COT
         else:
-            format_str+=BASE
+            format_str += constants.BASE
 
     elif model == "qwen_math":
-        format_str = PROMPT + question
+        format_str = constants.PROMPT + question
         if cot:
-            format_str+=COT
+            format_str += constants.COT
         else:
-            format_str+=BASE
+            format_str += constants.BASE
 
     elif model == "qwen_math_grpo":
-        content_str = PROMPT + question
+        content_str = constants.PROMPT + question
         if cot:
-            content_str+=COT
+            content_str += constants.COT
         else:
-            content_str+=BASE
+            content_str += constants.BASE
         answer_context = [{"role": "user", "content": content_str}]
         format_str = tokenizer.apply_chat_template(answer_context, tokenize=False, add_generation_prompt=True)
 
     elif model == "phi_grpo":
-        content_str = PROMPT + question
+        content_str = constants.PROMPT + question
         if cot:
-            content_str+=COT
+            content_str += constants.COT
         else:
-            content_str+=BASE
+            content_str += constants.BASE
         answer_context = [{"role": "user", "content": content_str}]
         format_str = tokenizer.apply_chat_template(answer_context, tokenize=False, add_generation_prompt=True)
 
     elif model == "phi":
-        content_str = PROMPT + question
+        content_str = constants.PROMPT + question
         if cot:
-            content_str+=COT
+            content_str += constants.COT
         else:
-            content_str+=BASE
+            content_str += constants.BASE
         answer_context = [{"role": "user", "content": content_str}]
         format_str = tokenizer.apply_chat_template(answer_context, tokenize=False, add_generation_prompt=True)
 
     elif model == "tulu":
-        content_str = PROMPT + question
+        content_str = constants.PROMPT + question
         if cot:
-            content_str+=COT
+            content_str += constants.COT
         else:
-            content_str+=BASE
+            content_str += constants.BASE
         answer_context = [{"role": "user", "content": content_str}]
         format_str = tokenizer.apply_chat_template(answer_context, tokenize=False, add_generation_prompt=True)
 

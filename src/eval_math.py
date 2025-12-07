@@ -56,12 +56,4 @@ def math_results(fnames):
         "temp_acc": temp_acc,
         "mcmc_acc": mcmc_acc,
     }
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("folder", type=str)
-    args = parser.parse_args()
-
-    folder = Path(args.folder)
-    fnames = sorted(str(p) for p in folder.glob("*.csv"))
-    math_results(fnames)
+    

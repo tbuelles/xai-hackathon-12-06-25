@@ -13,7 +13,7 @@ import math_normalize
 
 # sympy might hang -- we don't care about trying to be lenient in these cases
 BAD_SUBSTRINGS = ["^{", "^("]
-BAD_REGEXES = ["\^[0-9]+\^", "\^[0-9][0-9]+"]
+BAD_REGEXES = [r"\^[0-9]+\^", r"\^[0-9][0-9]+"]
 TUPLE_CHARS = "()[]"
 
 
@@ -75,10 +75,9 @@ def _str_is_int(x: str) -> bool:
         return False
 
 
-def _str_to_int(x: str) -> bool:
+def _str_to_int(x):
     x = x.replace(",", "")
-    x = float(x)
-    return int(x)
+    return int(float(x))
 
 
 def _inject_implicit_mixed_number(step: str):
@@ -231,7 +230,7 @@ def split_tuple(expr: str):
     return elems
 
 
-def grade_answer(given_answer: str, ground_truth: str) -> bool:
+def grade_answer(given_answer: str, ground_truth: str):
     """
     The answer will be considered correct if:
     (a) it normalizes to the same string as the ground truth answer
@@ -262,7 +261,7 @@ def grade_answer(given_answer: str, ground_truth: str) -> bool:
 
     ground_truth_elems = split_tuple(ground_truth_normalized)
     given_elems = split_tuple(given_normalized)
-
+    is_correct = False
     if len(ground_truth_elems) > 1 and (
         ground_truth_normalized[0] != given_normalized[0]
         or ground_truth_normalized[-1] != given_normalized[-1]
