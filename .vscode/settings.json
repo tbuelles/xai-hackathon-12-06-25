@@ -1,8 +1,11 @@
-{
-  "ruff.enable": false,
-  "python.analysis.typeCheckingMode": "off",
-  "basedpyright.disableLanguageServices": true,
-  "basedpyright.enable": false,
-  "basedpyright.disableOrganizeImports": true,
-  "python.linting.enabled": false
-}
+// {
+//   "python.analysis.inlayHints.variableTypes": false,
+//   "python.analysis.inlayHints.functionReturnTypes": false,
+//   "python.analysis.inlayHints.callArgumentNames": "off",
+//   "python.analysis.inlayHints.pytestParameters": false,
+//   "ruff.enable": false,
+//   "basedpyright.enable": true,
+//   "basedpyright.disableLanguageServices": false,
+//   "python.analysis.typeCheckingMode": "off",
+//   "python.analysis.diagnosticMode": "workspace"
+// }

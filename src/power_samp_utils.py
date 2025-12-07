@@ -47,11 +47,9 @@ def dist_temp_scale(logit_p, temp):
     return logit_p * torch.tensor(1 / temp, dtype=logit_p.dtype, device=logit_p.device)
 
 # low-temperature sampling proposal distribution
-def naive_temp(p : AutoregressiveSampler, context, temp, seq_len):
-    c = len(context)
-    device = p.device
+def naive_temp(p : AutoregressiveSampler, input_ids, temp, seq_len):
+    c = len(input_ids)
     tokenizer = p.tokenizer
-    input_ids = torch.tensor([context], dtype=torch.long, device=device)
     output = p.model.generate(
         input_ids=input_ids,
         max_new_tokens=seq_len - c,
@@ -141,22 +139,21 @@ def max_swap(p : AutoregressiveSampler, context, temp, mcmc_steps, max_new_token
 
 # power sampling with autoregressive mcmc
 def mcmc_power_samp(p : AutoregressiveSampler, context, temp, mcmc_steps, max_new_tokens, block_num=16):
-    c = len(context)
-    print(f'alpha: {1/temp}')
-    gen = []
-    if context is not None:
-        gen = context.copy()
+    print(f"alpha: {1/temp}")
     log_probs_norm = []
     log_probs_unnorm = []
+    c = 0
+    gen = []
+    if isinstance(context, torch.Tensor):
+        assert context.ndim == 1
+        c = context.numel()
+        gen = context.clone()
 
-
-    print(max_new_tokens)
     assert max_new_tokens % block_num == 0
     jump_size = int(max_new_tokens // block_num)
-    print(jump_size)
+    print(f"max new tokens: {max_new_tokens}, jump size: {jump_size}")
     attempts = 0
     acceptances = 0
-
 
     for _ in tqdm(range(block_num)):
         gen, lp_norm, lp_unnorm = naive_temp(p, gen, temp=temp, seq_len=jump_size+len(gen))
@@ -195,6 +192,7 @@ def mcmc_power_samp(p : AutoregressiveSampler, context, temp, mcmc_steps, max_ne
             return gen, log_probs_norm, log_probs_unnorm, acceptance_ratio
 
     acceptance_ratio = acceptances/attempts
+    gen = torch.tensor(gen, dtype=torch.long, device=p.device)
     return gen, log_probs_norm, log_probs_unnorm, acceptance_ratio
 
 
