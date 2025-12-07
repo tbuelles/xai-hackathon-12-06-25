@@ -1,25 +1,30 @@
-import os, requests
+import os, requests, json
+from dotenv import load_dotenv
+load_dotenv()
 
-API_KEY = os.environ["XAI_API_KEY"]
-url = "https://api.x.ai/v1/chat/completions"
+api_key = os.environ["XAI_API_KEY"]
 
 payload = {
     "model": "grok-4-latest",
     "messages": [
-        {"role": "system", "content": "You are a test assistant."},
-        {"role": "user", "content": "Testing. Just say hi and hello world and nothing else."}
+        {"role": "user", "content": "Write one sentence about attention mechanisms."}
     ],
     "temperature": 0,
+    "logprobs": True,
+    "top_logprobs": 5,   # optional; 0–20
     "stream": False,
 }
 
-resp = requests.post(
-    url,
-    headers={
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {API_KEY}",
-    },
+r = requests.post(
+    "https://api.x.ai/v1/chat/completions",
+    headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
     json=payload,
 )
-resp.raise_for_status()
-print(resp.json()["choices"][0]["message"]["content"])
+r.raise_for_status()
+out = r.json()
+
+text = out["choices"][0]["message"]["content"]
+logp = out["choices"][0].get("logprobs") or out["choices"][0]["message"].get("logprobs")
+
+print(text)
+print(json.dumps(logp, indent=2))
