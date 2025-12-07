@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 
-from .constants import *
+from constants import *
 
 ### DESCRIPTION ###
 # power sampling to sample from p^{alpha}, where p is the base model

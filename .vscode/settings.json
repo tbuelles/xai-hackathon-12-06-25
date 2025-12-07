@@ -1,0 +1,8 @@
+{
+  "ruff.enable": false,
+  "python.analysis.typeCheckingMode": "off",
+  "basedpyright.disableLanguageServices": true,
+  "basedpyright.enable": false,
+  "basedpyright.disableOrganizeImports": true,
+  "python.linting.enabled": false
+}
