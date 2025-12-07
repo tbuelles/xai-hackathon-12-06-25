@@ -50,6 +50,7 @@ def naive_temp(p : AutoregressiveSampler, gen, temp, seq_len):
     input_ids = torch.tensor([gen], device=p.device, dtype=torch.long)
     output = p.model.generate(
         input_ids=input_ids,
+        attention_mask=torch.ones_like(input_ids),
         max_new_tokens=seq_len - input_ids.size(-1),
         do_sample=True,
         temperature=temp,
@@ -68,7 +69,7 @@ def naive_temp(p : AutoregressiveSampler, gen, temp, seq_len):
 
     idx = tokens.view(unscaled_logits.shape[0], 1, 1)
 
-    log_probs_unnorm = (1/temp * torch.gather(F.log_softmax(unscaled_logits, dim=-1), -1, idx)).view(-1).tolist()
+    log_probs_unnorm = (1 / temp * torch.gather(F.log_softmax(unscaled_logits, dim=-1), -1, idx)).view(-1).tolist()
     log_probs_norm = torch.gather(F.log_softmax(scaled_logits, dim=-1), -1, idx).view(-1).tolist()
 
     assert len(tokens) == len(log_probs_unnorm) == len(log_probs_norm)
@@ -88,13 +89,13 @@ def max_swap(p : AutoregressiveSampler, context, temp, mcmc_steps, max_new_token
         gen = context.copy()
 
     assert max_new_tokens % block_num == 0
-    jump_size = int(max_new_tokens // block_num)
+    nblocks = int(max_new_tokens // block_num)
     attempts = 0
     acceptances = 0
 
 
     for _ in tqdm(range(block_num)):
-        gen, lp_norm, lp_unnorm = naive_temp(p, gen, temp=temp, seq_len=jump_size+len(gen))
+        gen, lp_norm, lp_unnorm = naive_temp(p, gen, temp=temp, seq_len=nblocks+len(gen))
         log_probs_norm.extend(lp_norm)
         log_probs_unnorm.extend(lp_unnorm)
 
@@ -133,7 +134,7 @@ def max_swap(p : AutoregressiveSampler, context, temp, mcmc_steps, max_new_token
     return gen, log_probs_norm, log_probs_unnorm, acceptance_ratio
 
 # power sampling with autoregressive mcmc
-def mcmc_power_samp(p : AutoregressiveSampler, context, temp, mcmc_steps, max_new_tokens, block_num=16):
+def mcmc_power_samp(p : AutoregressiveSampler, context, temp, mcmc_steps, max_new_tokens, block_size=16):
     print(f"alpha: {1/temp}")
     log_probs_norm = []
     log_probs_unnorm = []
@@ -143,23 +144,23 @@ def mcmc_power_samp(p : AutoregressiveSampler, context, temp, mcmc_steps, max_ne
         c = len(context)
         gen = context.copy()
 
-    assert max_new_tokens % block_num == 0
-    jump_size = int(max_new_tokens // block_num)
-    print(f"max new tokens: {max_new_tokens}, jump size: {jump_size}")
+    block_size = min(block_size, max_new_tokens)
+    assert max_new_tokens % block_size == 0
+    nblocks = int(max_new_tokens // block_size)
+    print(f"max new tokens: {max_new_tokens}, block size: {block_size}, nblocks: {nblocks}")
     attempts = 0
     acceptances = 0
 
-    for _ in tqdm(range(block_num)):
-        gen, lp_norm, lp_unnorm = naive_temp(p, gen, temp=temp, seq_len=jump_size+len(gen))
+    for _ in tqdm(range(nblocks)):
+        gen, lp_norm, lp_unnorm = naive_temp(p, gen, temp=temp, seq_len=block_size+len(gen))
         log_probs_norm.extend(lp_norm)
         log_probs_unnorm.extend(lp_unnorm)
 
         for _ in tqdm(range(mcmc_steps)):
-            attempts+=1
-            t = len(gen)
-            idx = random.randint(c, t-1)
+            attempts += 1
+            idx = random.randint(c, len(gen)-1)
             # llm query takes the burden of time
-            prop, log_prob_prop, target_log_prob_prop = naive_temp(p, gen[:idx], temp=temp, seq_len=t)
+            prop, log_prob_prop, target_log_prob_prop = naive_temp(p, gen[:idx], temp=temp, seq_len=len(gen))
             s = len(prop)
             assert(len(log_prob_prop) == s - idx)
             assert(len(target_log_prob_prop) == s - idx)
@@ -168,7 +169,7 @@ def mcmc_power_samp(p : AutoregressiveSampler, context, temp, mcmc_steps, max_ne
             log_r = sum(target_log_prob_prop) + sum(log_prob_cur) - sum(target_log_prob_cur) - sum(log_prob_prop)
 
             if np.random.rand() < np.exp(log_r):
-                acceptances+=1
+                acceptances += 1
                 gen = prop.copy()
                 log_probs_norm[idx-c:] = log_prob_prop.copy()
                 log_probs_unnorm[idx-c:] = target_log_prob_prop.copy()
@@ -182,13 +183,11 @@ def mcmc_power_samp(p : AutoregressiveSampler, context, temp, mcmc_steps, max_ne
             gen = gen[:eos_idx + 1]
             log_probs_norm = log_probs_norm[:eos_idx + 1]
             log_probs_unnorm = log_probs_unnorm[:eos_idx + 1]
-            acceptance_ratio = acceptances/attempts
+            acceptance_ratio = acceptances / attempts
             return gen, log_probs_norm, log_probs_unnorm, acceptance_ratio
 
-    acceptance_ratio = acceptances/attempts
-    gen_t = torch.tensor(gen, dtype=torch.long, device=p.device)
-    print("Generation: ", gen_t)
-    return gen_t, log_probs_norm, log_probs_unnorm, acceptance_ratio
+    acceptance_ratio = acceptances / attempts
+    return gen, log_probs_norm, log_probs_unnorm, acceptance_ratio
 
 
 def format_prompt(question, model, tokenizer, cot=True):

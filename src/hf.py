@@ -12,9 +12,11 @@ cache_dir = "/home/tim/xai-hackathon-12-06-25/assets/huggingface"
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model_str = "Qwen/Qwen2.5-7B"
-json_file = "../assets/data/MATH500.json"
 
-with open(json_file, "r") as f:
+repo_root = os.environ.get("REPO_ROOT", os.getcwd())
+json_file = os.path.join(repo_root, "assets", "data", "MATH500.json")
+
+with open(json_file) as f:
     dataset = json.load(f)
 
 tokenizer = transformers.AutoTokenizer.from_pretrained(model_str, cache_dir=cache_dir, trust_remote_code=True)
@@ -37,42 +39,12 @@ def run_qwen(dataset, start=0, end=100, cot=True, temp=0.25, mcmc_steps=10, max_
         res["answer"] = answer
 
         input_text = format_prompt(question, "qwen", tokenizer, cot)
-        inputs = tokenizer(input_text, return_tensors="pt")
+        inputs = tokenizer(input_text, return_tensors="pt", padding=False, truncation=False)
         inputs = {k: v.to(hf_model.device) for k, v in inputs.items()}
-        input_ids = inputs["input_ids"][0]
-
-        naive_out = hf_model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            return_dict_in_generate=True,
-            output_scores=True,
-            do_sample=True,
-            pad_token_id=tokenizer.eos_token_id,
+        mcmc_ids_, _, _, acc = mcmc_power_samp(
+            autoreg_sampler, inputs["input_ids"][0].tolist(), temp, mcmc_steps, max_new_tokens=max_new_tokens
         )
-        naive_out_temp = hf_model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            return_dict_in_generate=True,
-            output_scores=True,
-            do_sample=True,
-            temperature=temp,
-            pad_token_id=tokenizer.eos_token_id,
-        )
-
-        # naive_ids = naive_out[0][:, len(input_ids):].squeeze().to("cpu")
-        # naive_completion = tokenizer.decode(naive_ids, skip_special_tokens=True)
-        # res["naive_completion"] = naive_completion
-        # res["naive_answer"] = parse_answer(naive_completion)
-
-        # naive_temp_ids = naive_out_temp[0][:, len(input_ids):].squeeze().to("cpu")
-        # naive_temp_completion = tokenizer.decode(naive_temp_ids, skip_special_tokens=True)
-        # res["naive_temp_completion"] = naive_temp_completion
-        # res["naive_temp_answer"] = parse_answer(naive_temp_completion)
-        
-        mcmc_ids, _, _, acc = mcmc_power_samp(
-            autoreg_sampler, input_ids.tolist(), temp, mcmc_steps, max_new_tokens=max_new_tokens
-        )
-        mcmc_ids = mcmc_ids.to("cpu")
+        mcmc_ids = torch.tensor(mcmc_ids_, dtype=torch.long, device="cpu")
         mcmc_completion = tokenizer.decode(mcmc_ids, skip_special_tokens=True)
         res["mcmc_completion"] = mcmc_completion
         results.append(res)
@@ -81,6 +53,6 @@ def run_qwen(dataset, start=0, end=100, cot=True, temp=0.25, mcmc_steps=10, max_
     return pd.DataFrame(results)
 
 
-res = run_qwen(dataset, start=0, end=1, cot=True, temp=0.25, max_new_tokens=1<<10, mcmc_steps=1)
+res = run_qwen(dataset, start=0, end=1, cot=True, temp=0.25, max_new_tokens=1<<8, mcmc_steps=1)
 
 print(res)
